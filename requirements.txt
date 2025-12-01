@@ -1,0 +1,4 @@
+aiogram==3.22.0
+aiogram-widgets==1.2.7
+dataclasses-json==0.6.7
+briefcase==0.3.25
