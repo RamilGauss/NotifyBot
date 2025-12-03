@@ -51,7 +51,7 @@ async def list_notifications(message: Message):
                 notifyDay = "???"
             else:
                 notifyDay = weekday
-        buttons.append(InlineKeyboardButton(text=f"{notifyDay}|{notify.hour}:{notify.minute}|{notify.text}", callback_data=f"button.{notify_id}"))
+        buttons.append(InlineKeyboardButton(text=f"{notifyDay} | {notify.hour:02d}:{notify.minute:02d} | {notify.text}", callback_data=f"button.{notify_id}"))
     paginator = KeyboardPaginator(
         data=buttons,
         router=router,
@@ -59,14 +59,14 @@ async def list_notifications(message: Message):
         per_row=1
     )
 
-    await message.answer(text="Уведомления", reply_markup=paginator.as_markup())
+    await message.answer(text="list", reply_markup=paginator.as_markup())
 
 @dp.message(Command("add"))
 async def add_notification(message: Message):
     user_id = message.from_user.id
     userCommandContexts[user_id] = {}
     userInfo = notifyManager.GetUser(user_id)
-    notify = Notify(str(uuid.uuid4()), "1", 12, 0, "hello", None)
+    notify = Notify(str(uuid.uuid4()), "1", 12, 0, "Новое", None)
     userInfo.notifies[notify.notify_id] = notify
     notifyLoader.Save(userInfo)
 
@@ -76,6 +76,9 @@ async def list_notifications(message: Message):
 
 @dp.message()
 async def text_handler(message: Message):
+    if message.text is None:
+        await message.answer(text="Стикеры не поддерживаются. Введите текст.")
+        return
     user_id = message.from_user.id
     if not user_id in userCommandContexts:
         return
@@ -85,25 +88,35 @@ async def text_handler(message: Message):
     if not userCommandCtx.waitCommand in ["day", "time", "text"]:
         return
     userInfo: UserInfo
+    userInfo = notifyManager.GetUser(user_id)
+    if userInfo is None:
+        await message.answer(text="Не нашел такого пользователя.")
+        return
+    notifyInfo: Notify
+    notifyInfo = userInfo.notifies[userCommandCtx.notify_id]
+    if notifyInfo is None:
+        await message.answer(text="Не нашел такое уведомление пользователя.")
+        return
     if userCommandCtx.waitCommand == "day":
-        userInfo = notifyManager.GetUser(user_id)
-        if message.text.isdigit():
-            userInfo.notifies[userCommandCtx.notify_id].day = message.text
+        dayStr = message.text.lower()
+        if dayStr.isdigit():
+            notifyInfo.day = dayStr
+            notifyInfo.lastSentDate = None
         else:
-            weekday = DateUtils.ConvertWeekDayRuToEn(message.text)
+            weekday = DateUtils.ConvertWeekDayRuToEn(dayStr)
             if weekday is None:
-                await message.answer(text=f"Не понял ваш ответ {message.text}. Формат дня: 1-31, к, пн, вт, ср, чт, пт, сб, вс")
+                await message.answer(text=f"Не понял ваш ответ {message.text}. Формат дня: 1-31, е, пн, вт, ср, чт, пт, сб, вс")
                 return
             else:
-                userInfo.notifies[userCommandCtx.notify_id].day = weekday
+                notifyInfo.day = weekday
+                notifyInfo.lastSentDate = None
     elif userCommandCtx.waitCommand == "time":
         splittedText = message.text.split(":")
-        userInfo = notifyManager.GetUser(user_id)
-        userInfo.notifies[userCommandCtx.notify_id].hour = int(splittedText[0])
-        userInfo.notifies[userCommandCtx.notify_id].minute = int(splittedText[1])
+        notifyInfo.hour = int(splittedText[0])
+        notifyInfo.minute = int(splittedText[1])
+        notifyInfo.lastSentDate = None
     elif userCommandCtx.waitCommand == "text":
-        userInfo = notifyManager.GetUser(user_id)
-        userInfo.notifies[userCommandCtx.notify_id].text = message.text
+        notifyInfo.text = message.text
     notifyLoader.Save(userInfo)
 
 @dp.callback_query(lambda c: "button." in c.data)
@@ -126,7 +139,7 @@ async def edit_notify(callback_query: types.CallbackQuery):
     editBuilder = InlineKeyboardBuilder()
     editBuilder.row(
         InlineKeyboardButton(text=f"День: {notifyDay}", callback_data=f"edit.day.{notify_id}"),
-        InlineKeyboardButton(text=f"Время: {notify.hour}:{notify.minute}", callback_data=f"edit.time.{notify_id}"),
+        InlineKeyboardButton(text=f"Время: {notify.hour:02d}:{notify.minute:02d}", callback_data=f"edit.time.{notify_id}"),
     )
     editBuilder.row(
         InlineKeyboardButton(text=f"Текст: {notify.text}", callback_data=f"edit.text.{notify_id}"),
@@ -147,7 +160,7 @@ async def edit_day(callback_query: types.CallbackQuery):
     userCommandContexts[user_id] = userCommandCtx
 
     await callback_query.answer()
-    await callback_query.message.answer("Введите новое значение дня. Формат: 1-31, к, пн, вт, ср, чт, пт, сб, вс.")
+    await callback_query.message.answer("Введите новое значение дня.\nФормат: 1-31, е, пн, вт, ср, чт, пт, сб, вс.")
 
 @dp.callback_query(lambda c: "edit.time" in c.data)
 async def edit_time(callback_query: types.CallbackQuery):
@@ -158,7 +171,7 @@ async def edit_time(callback_query: types.CallbackQuery):
     userCommandContexts[user_id] = userCommandCtx
 
     await callback_query.answer()
-    await callback_query.message.answer("Введите новое значение времени. Формат чч:мм. Например: 12:00.")
+    await callback_query.message.answer("Введите новое значение времени.\nФормат чч:мм.")
 
 @dp.callback_query(lambda c: "edit.text" in c.data)
 async def edit_text(callback_query: types.CallbackQuery):
@@ -189,7 +202,7 @@ async def edit_delete(callback_query: types.CallbackQuery):
 async def timerFunc(bot: Bot):
     while True:
         await check_and_send_notifications(bot)
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
 
 async def check_and_send_notifications(bot: Bot):
     now = datetime.now()
@@ -223,6 +236,10 @@ async def check_and_send_notifications(bot: Bot):
 async def main() -> None:
     load_dotenv()
     BOT_TOKEN = os.getenv("BOT_TOKEN")
+    if BOT_TOKEN is None:
+        print("Please add file .env with field BOT_TOKEN.")
+        return
+    print("Found bot token and begun work.")
     global bot
     bot = Bot(token=BOT_TOKEN)
     commands = [
@@ -237,7 +254,7 @@ async def main() -> None:
 
 # @MonthNotifyBot
 if __name__ == "__main__":
-    notifyLoader.Setup(".")
+    notifyLoader.Setup("../NotifyBotData")
     notifyManager.SetUsers(notifyLoader.LoadAll())
 
     asyncio.run(main())

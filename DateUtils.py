@@ -16,7 +16,7 @@ class DateUtils:
     def ConvertWeekDayRuToEn(dayStr):
         weekdays = list(calendar.day_name)
         weekDict = {
-            "к": DateUtils.EveryDay(),
+            "е": DateUtils.EveryDay(),
             "пн": weekdays[0],
             "вт": weekdays[1],
             "ср": weekdays[2],
@@ -33,7 +33,7 @@ class DateUtils:
     def ConvertWeekDayEnToRu(dayStr):
         weekdays = list(calendar.day_name)
         weekDict = {
-            DateUtils.EveryDay() : "каждый день",
+            DateUtils.EveryDay() : "ежедневно",
             weekdays[0] : "понедельник",
             weekdays[1] : "вторник",
             weekdays[2] : "среда",
