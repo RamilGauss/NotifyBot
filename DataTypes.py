@@ -30,3 +30,17 @@ class UserCommandContext:
     user_id: int
     notify_id: str
     waitCommand: str
+
+@dataclass_json
+@dataclass
+class Template:
+    template_id: str
+    day: str # 1-31, к, пн, вт, ср, чт, пт, сб, вс
+    hour: int
+    minute: int
+    text: str
+
+@dataclass_json
+@dataclass
+class TemplateList:
+    templates: dict[str, Template] # uuid, Template

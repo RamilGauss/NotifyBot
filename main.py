@@ -18,11 +18,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from NotifyLoader import *
 from NotifyManager import *
+from TemplateLoader import *
 from DataTypes import *
 from DateUtils import *
 
 notifyLoader = NotifyLoader()
 notifyManager = NotifyManager()
+templateLoader = TemplateLoader()
 userCommandContexts = {}
 router = Router(name="router")
 
@@ -51,7 +53,7 @@ async def list_notifications(message: Message):
                 notifyDay = "???"
             else:
                 notifyDay = weekday
-        buttons.append(InlineKeyboardButton(text=f"{notifyDay} | {notify.hour:02d}:{notify.minute:02d} | {notify.text}", callback_data=f"button.{notify_id}"))
+        buttons.append(InlineKeyboardButton(text=f"{notifyDay} | {notify.hour:02d}:{notify.minute:02d} | {notify.text}", callback_data=f"notify.{notify_id}"))
     paginator = KeyboardPaginator(
         data=buttons,
         router=router,
@@ -69,6 +71,23 @@ async def add_notification(message: Message):
     notify = Notify(str(uuid.uuid4()), "1", 12, 0, "Новое", None)
     userInfo.notifies[notify.notify_id] = notify
     notifyLoader.Save(userInfo)
+
+@dp.message(Command("add_template"))
+async def add_notification_via_template(message: Message):
+    user_id = message.from_user.id
+    userCommandContexts[user_id] = {}
+    templateList = templateLoader.GetTemplates()
+    buttons = []
+    for template_id, template in templateList.templates.items():
+        buttons.append(InlineKeyboardButton(text=f"{template.day} | {template.hour:02d}:{template.minute:02d} | {template.text}", callback_data=f"template.{template_id}"))
+    paginator = KeyboardPaginator(
+        data=buttons,
+        router=router,
+        per_page=5,
+        per_row=1
+    )
+
+    await message.answer(text="Шаблоны", reply_markup=paginator.as_markup())
 
 @dp.message(Command("cancel"))
 async def list_notifications(message: Message):
@@ -119,7 +138,20 @@ async def text_handler(message: Message):
         notifyInfo.text = message.text
     notifyLoader.Save(userInfo)
 
-@dp.callback_query(lambda c: "button." in c.data)
+@dp.callback_query(lambda c: "template." in c.data)
+async def add_template_as_notify(callback_query: types.CallbackQuery):
+    splittedData = callback_query.data.split(".")
+    template_id = splittedData[1]
+    userInfo = notifyManager.GetUser(callback_query.from_user.id)
+    await callback_query.answer()
+    template: Template
+    template = templateLoader.GetTemplates().templates[template_id]
+    notify = Notify(str(uuid.uuid4()), template.day, template.hour, template.minute, template.text, None)
+    userInfo.notifies[notify.notify_id] = notify
+    notifyLoader.Save(userInfo)
+    await callback_query.message.answer("Добавлено")
+
+@dp.callback_query(lambda c: "notify." in c.data)
 async def edit_notify(callback_query: types.CallbackQuery):
     splittedData = callback_query.data.split(".")
     notify_id = splittedData[1]
@@ -246,6 +278,7 @@ async def main() -> None:
         BotCommand(command="/start", description="Start the bot"),
         BotCommand(command="/add", description="Добавить уведомление"),
         BotCommand(command="/list", description="Получить список уведомлений (удалить, править)"),
+        BotCommand(command="/add_template", description="Добавить уведомление из шаблона"),
         BotCommand(command="/cancel", description="Отменить ожидание ввода"),
     ]
     await bot.set_my_commands(commands=commands, scope=BotCommandScopeDefault())
@@ -254,6 +287,8 @@ async def main() -> None:
 
 # @MonthNotifyBot
 if __name__ == "__main__":
+    templateLoader.Setup("./Templates.json")
+    templateLoader.LoadAll()
     notifyLoader.Setup("../NotifyBotData")
     notifyManager.SetUsers(notifyLoader.LoadAll())
 
